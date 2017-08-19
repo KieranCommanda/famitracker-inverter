@@ -8,12 +8,24 @@ using System.Threading.Tasks;
 
 namespace ftinvert
 {
+    public static class Global
+    {
+        public static int maxNoteIncrease;
+    }
     class Program
     {
+        
         static void Main(string[] args)
         {
-            var fileRead = new FileStream("ducktales main.txt", FileMode.Open);
-            var fileWrite = new FileStream("ducktales main inverted.txt", FileMode.Create);
+            Console.WriteLine("Enter the filename without .txt:");
+            var filename = Console.ReadLine();
+            Console.WriteLine("Enter the key (e.g. C# for C sharp/D flat, C- for just C) major/minor doesn't matter:");
+            var key = Console.ReadLine();
+            Console.WriteLine("Enter the maximum distance in semitones a note may go up by from the original track (0 - 11):");
+            Global.maxNoteIncrease = Int32.Parse(Console.ReadLine());
+
+            var fileRead = new FileStream(filename +".txt", FileMode.Open);
+            var fileWrite = new FileStream( filename + " inverted.txt", FileMode.Create);
             var streamRead = new StreamReader(fileRead);
             var streamWrite = new StreamWriter(fileWrite);
             var currentLine = "";
@@ -25,7 +37,7 @@ namespace ftinvert
                     continue;
                 }
 
-                var newLine = currentLine.InvertNotes();
+                var newLine = currentLine.InvertNotes(key);
                 streamWrite.WriteLine(newLine);
             }
             streamRead.Close();
@@ -34,9 +46,9 @@ namespace ftinvert
     }
     public static class FTInvertHelper
     {
-        public static string InvertNotes(this string row)
+        public static string InvertNotes(this string row, string key)
         {
-            var noteMapper = new NoteMapper("E-");
+            var noteMapper = new NoteMapper(key);
             var returns = row;
             for (int i = 0; i < row.Length -2; i++)
             {
@@ -98,7 +110,7 @@ namespace ftinvert
 
                 //Determine new octave. We will do -1 octave if difference is greater than or equal to +4;
                 int octaveModifier = 0;
-                if (toNote - notes[fromNote] >= 4)
+                if (toNote - notes[fromNote] >= Global.maxNoteIncrease)
                 {
                     octaveModifier = -1;
                 }
