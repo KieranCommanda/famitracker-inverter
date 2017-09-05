@@ -10,7 +10,11 @@ namespace ftinvert
 {
     public static class Global
     {
-        public static int maxNoteIncrease;
+        public static int baseOctaveModifier;
+        internal static int triangleOctaveModifier;
+        public static List<int> notesToRaise;
+        public static List<int> notesToLower;
+        public static Dictionary<int, int> lastFromNoteInColumn = new Dictionary<int, int>();
     }
     class Program
     {
@@ -21,8 +25,14 @@ namespace ftinvert
             var filename = Console.ReadLine();
             Console.WriteLine("Enter the key (e.g. C# for C sharp/D flat, C- for just C) major/minor doesn't matter:");
             var key = Console.ReadLine();
-            Console.WriteLine("Enter the maximum distance in semitones a note may go up by from the original track (0 - 11):");
-            Global.maxNoteIncrease = Int32.Parse(Console.ReadLine());
+            Console.WriteLine("Enter base octave modifier (integer):");
+            Global.baseOctaveModifier = Int32.Parse(Console.ReadLine());
+            Console.WriteLine("Enter triangle octave modifier (integer):");
+            Global.triangleOctaveModifier = Int32.Parse(Console.ReadLine());
+            Console.WriteLine("Enter a comma-separated list of notes to raise 1 octave (0-11) or -1 if none:");
+            Global.notesToRaise = Console.ReadLine().Split(',').ToList().Select(s=>Int32.Parse(s.Trim())).ToList();
+            Console.WriteLine("Enter a comma-separated list of notes to lower 1 octave (0-11) or -1 if none:");
+            Global.notesToLower = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
 
             var fileRead = new FileStream(filename +".txt", FileMode.Open);
             var fileWrite = new FileStream( filename + " inverted.txt", FileMode.Create);
@@ -37,7 +47,16 @@ namespace ftinvert
                     continue;
                 }
 
-                var newLine = currentLine.InvertNotes(key);
+                var newLine = "";
+                var currentLineSplit = currentLine.Split(':');
+                for (int i = 0; i < currentLineSplit.Length; i++)
+                {
+                    if (i != 3)
+                        newLine += currentLineSplit[i].InvertNotes(key, Global.baseOctaveModifier,i) +":";
+                    else
+                        newLine += currentLineSplit[i].InvertNotes(key, Global.triangleOctaveModifier,i) + ":";
+                }
+                newLine = newLine.Substring(0,newLine.Length - 1);
                 streamWrite.WriteLine(newLine);
             }
             streamRead.Close();
@@ -46,11 +65,11 @@ namespace ftinvert
     }
     public static class FTInvertHelper
     {
-        public static string InvertNotes(this string row, string key)
+        public static string InvertNotes(this string cell, string key, int octaveModifier, int column)
         {
-            var noteMapper = new NoteMapper(key);
-            var returns = row;
-            for (int i = 0; i < row.Length -2; i++)
+            var noteMapper = new NoteMapper(key, octaveModifier);
+            var returns = cell;
+            for (int i = 0; i < cell.Length -2; i++)
             {
                 var curSubstr = returns.Substring(i, 3);
                 var newSubstr = curSubstr;
@@ -58,11 +77,14 @@ namespace ftinvert
                 {
                     if (curSubstr.Substring(0, 2) == noteMapping.FromNote)
                     {
+                        
                         int parsedOctave;
                         string finalOctave;
                         //if no parse then is noise channel
                         if (Int32.TryParse(curSubstr.Substring(2, 1), out parsedOctave))
                         {
+                            //log this note as the last one found in this column
+                            Global.lastFromNoteInColumn[column] = Notes.Instance.NotesNameIndex[noteMapping.FromNote];
                             var unmodifiedOctave = parsedOctave;
                             var modifiedOctave = (unmodifiedOctave + noteMapping.OctaveModifier);
 
@@ -71,12 +93,30 @@ namespace ftinvert
                             else
                                 finalOctave = unmodifiedOctave + "";
                             newSubstr = noteMapping.ToNote + finalOctave;
+                            
                         }
-                        
                     }
                 }
                 returns = returns.Remove(i, 3);
                 returns = returns.Insert(i, newSubstr);
+            }
+            //correct a pitch shifts in this cell based on previous note found in column
+            var psi = returns.IndexOf('P'); //pitch shift index
+
+            if (psi > -1 && Global.lastFromNoteInColumn.ContainsKey(column))
+            {
+                var lastNote = Notes.Instance.NotesNameIndex[Global.lastFromNoteInColumn[column]];
+                var noteMapping = noteMapper.NoteMappings.Single(nm => nm.FromNote == lastNote);
+                var psSubString = returns.Substring(psi + 1, 2);
+                var hexPSValue = Convert.ToInt32(psSubString, 16);
+                var hexPSDelta = 128 - hexPSValue;
+                var newPSDelta = (int)Math.Round(hexPSDelta * noteMapping.PitchShiftCorrection);
+                var newPSValue = 128 + newPSDelta; // this will invert the direction of all pitch shifts
+                while (newPSValue < 0)
+                    newPSValue += 256;
+                var newPSHexString = newPSValue.ToString("X2");
+                returns = returns.Remove(psi + 1, 2);
+                returns = returns.Insert(psi + 1, newPSHexString);
             }
             return returns;
         }
@@ -87,35 +127,48 @@ namespace ftinvert
         public int OctaveModifier;
         public string FromNote;
         public string ToNote;
+        public double PitchShiftCorrection;
     }
     public class NoteMapper
     {
-        public List<NoteMapping> NoteMappings = new List<NoteMapping>();
-        public NoteMapper(string key)
+        public static double CalculatePitchShiftCorrection(int diffSemitones)
         {
+            return Math.Pow(((double)18 / (double)17), -((double)diffSemitones));
+        }
+        public List<NoteMapping> NoteMappings = new List<NoteMapping>();
+        public NoteMapper(string key, int octaveModifier)
+        { 
             var notes = Notes.Instance.NotesNameIndex;
             foreach (var fromNote in notes.Dict1To2.Keys)
             {
+               int newOctaveModifier = octaveModifier;
                 var noteMapping = new NoteMapping();
                 noteMapping.FromNote = fromNote;
                 // Determine new note. We are doing inversion around major/minor mediant
                 int distanceFromKeyNote = notes[fromNote] - notes[key];
-                if (distanceFromKeyNote < 0)
-                    distanceFromKeyNote = distanceFromKeyNote + 12;
                 int newDistanceFromKeyNote = 7 - distanceFromKeyNote;
-                if (newDistanceFromKeyNote < 0)
-                    newDistanceFromKeyNote += 12;
-                var toNote = ((newDistanceFromKeyNote + notes[key] -1) % 12) + 1;
+                var toNote = (newDistanceFromKeyNote + notes[key]);
+                if (toNote > 11)
+                {
+                    toNote %= 12;
+                }
+                if (toNote < 0)
+                {
+                    toNote += 12;
+                }
                 var toNoteName = notes[toNote];
 
-                //Determine new octave. We will do -1 octave if difference is greater than or equal to +4;
-                int octaveModifier = 0;
-                if (toNote - notes[fromNote] >= Global.maxNoteIncrease)
+                if (Global.notesToLower.Contains(toNote))
                 {
-                    octaveModifier = -1;
+                    newOctaveModifier -= 1;
                 }
+                if (Global.notesToRaise.Contains(toNote))
+                {
+                    newOctaveModifier += 1;
+                }
+                noteMapping.PitchShiftCorrection = CalculatePitchShiftCorrection(newOctaveModifier * 12 + (toNote - notes[fromNote]));
                 noteMapping.ToNote = toNoteName;
-                noteMapping.OctaveModifier = octaveModifier;
+                noteMapping.OctaveModifier = newOctaveModifier;
                 NoteMappings.Add(noteMapping);
             }
         }
@@ -138,19 +191,18 @@ namespace ftinvert
         public Notes()
         {
             NotesNameIndex = new DoubleDict<string, int>();
-            NotesNameIndex[1] = "A-";
-            NotesNameIndex[2] = "A#";
-            NotesNameIndex[3] = "B-";
-            NotesNameIndex[4] = "C-";
-            NotesNameIndex[5] = "C#";
-            NotesNameIndex[6] = "D-";
-            NotesNameIndex[7] = "D#";
-            NotesNameIndex[8] = "E-";
-            NotesNameIndex[9] = "F-";
-            NotesNameIndex[10] = "F#";
-            NotesNameIndex[11] = "G-";
-            NotesNameIndex[12] = "G#";
-
+            NotesNameIndex[9] = "A-";
+            NotesNameIndex[10] = "A#";
+            NotesNameIndex[11] = "B-";
+            NotesNameIndex[0] = "C-";
+            NotesNameIndex[1] = "C#";
+            NotesNameIndex[2] = "D-";
+            NotesNameIndex[3] = "D#";
+            NotesNameIndex[4] = "E-";
+            NotesNameIndex[5] = "F-";
+            NotesNameIndex[6] = "F#";
+            NotesNameIndex[7] = "G-";
+            NotesNameIndex[8] = "G#";
         }
     }
     public class DoubleDict<T1, T2>

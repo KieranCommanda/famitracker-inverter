@@ -11,3 +11,9 @@ C:\Users\Kieran Commanda\source\repos\ftinvert\ftinvert\obj\Debug\ftinvert.cspro
 C:\Users\Kieran Commanda\source\repos\ftinvert\ftinvert\obj\Debug\ftinvert.exe
 C:\Users\Kieran Commanda\source\repos\ftinvert\ftinvert\obj\Debug\ftinvert.pdb
 C:\Users\Kieran Commanda\source\repos\ftinvert\ftinvert\obj\Debug\ftinvert.csprojResolveAssemblyReference.cache
+C:\Users\Kieran Commanda\Source\Repos\famitracker-inverter\ftinvert\ftinvert\bin\Debug\ftinvert.exe.config
+C:\Users\Kieran Commanda\Source\Repos\famitracker-inverter\ftinvert\ftinvert\bin\Debug\ftinvert.exe
+C:\Users\Kieran Commanda\Source\Repos\famitracker-inverter\ftinvert\ftinvert\bin\Debug\ftinvert.pdb
+C:\Users\Kieran Commanda\Source\Repos\famitracker-inverter\ftinvert\ftinvert\obj\Debug\ftinvert.csproj.CoreCompileInputs.cache
+C:\Users\Kieran Commanda\Source\Repos\famitracker-inverter\ftinvert\ftinvert\obj\Debug\ftinvert.exe
+C:\Users\Kieran Commanda\Source\Repos\famitracker-inverter\ftinvert\ftinvert\obj\Debug\ftinvert.pdb
