@@ -16,6 +16,10 @@ namespace ftinvert
         public static List<int> notesToLower;
         public static Dictionary<int, int> lastFromNoteInColumn = new Dictionary<int, int>();
         public static Dictionary<int, int> lastOctaveInColumn = new Dictionary<int, int>();
+
+        public static bool AlterPitchBends { get; internal set; }
+        public static bool ReversePitchBends { get; internal set; }
+        public static bool CorrectPitchBends { get; internal set; }
     }
     class Program
     {
@@ -28,6 +32,13 @@ namespace ftinvert
             var mode = Console.ReadLine();
             NoteMapper noteMapper;
             NoteMapper triangleNoteMapper;
+            Global.ReversePitchBends = mode == "1"; //we will revere the pitc ben if we are doing negative harmony only
+            Console.WriteLine("Correct pitch bends(y/n)?:");
+
+            Global.CorrectPitchBends = Console.ReadLine().ToLower().Trim() == "y";
+            Console.WriteLine("Alter pitch bends(y/n)?:");
+
+            Global.AlterPitchBends = Console.ReadLine().ToLower().Trim() == "y";
             if (mode == "1")
             {
                 Console.WriteLine("Enter the key (e.g. C# for C sharp/D flat, C- for just C) major/minor doesn't matter:");
@@ -45,21 +56,24 @@ namespace ftinvert
             }
             else
             {
+
                 Console.WriteLine("Enter the settings file name without .txt, or press enter for console:");
                 var settingsName = Console.ReadLine();
+                Console.WriteLine("Enter key to transpose the settings from C (0-11):");
+                int key = Int32.Parse(Console.ReadLine());
                 if (settingsName == "")
                 {
                     Console.WriteLine("Create new settings file? Enter name for yes or press enter:");
                     var newSettingsName = Console.ReadLine();
                     if (newSettingsName == "")
-                        noteMapper = new NoteMapper(Console.In);
+                        noteMapper = new NoteMapper(Console.In, key);
                     else
                     {
                         var settingsFile = new FileStream(newSettingsName + ".txt", FileMode.Create);
                         var settingsWrite = new StreamWriter(settingsFile);
                         
                         var newSettingsReader = new ReaderIntoWriter(Console.In, settingsWrite);
-                        noteMapper = new NoteMapper(newSettingsReader);
+                        noteMapper = new NoteMapper(newSettingsReader, key);
                         settingsWrite.Close();
                     }
                 }
@@ -68,7 +82,7 @@ namespace ftinvert
                     var settingsFile = new FileStream(settingsName + ".txt", FileMode.Open);
                     var settingsRead = new StreamReader(settingsFile);
                     
-                    noteMapper = new NoteMapper(settingsRead);
+                    noteMapper = new NoteMapper(settingsRead, key);
                     settingsRead.Close();
                 }
                 triangleNoteMapper = noteMapper;
@@ -134,7 +148,7 @@ namespace ftinvert
                             else
                                 finalOctave = unmodifiedOctave + "";
                             newSubstr = noteMapping.ToNote + finalOctave;
-                            if (noteMapping.NewPitchShiftInSemitones != null)
+                            if (noteMapping.NewPitchShiftInSemitones != null && Global.AlterPitchBends)
                             { // hack alert - replace first fx column with a pitch modifier if we are doing "custom map" for microtonal stuff
                                 returns = returns.Remove(i + 9, 3);
                                 returns = returns.Insert(i + 9, "P80");
@@ -152,12 +166,18 @@ namespace ftinvert
             {
                 var lastNote = Notes.Instance.NotesNameIndex[Global.lastFromNoteInColumn[column]];
                 var noteMapping = noteMapper.NoteMappings.Single(nm => nm.FromNote == lastNote);
-                if (noteMapping.NewPitchShiftInSemitones == null) // new pitch shift is exclusive from PitchShiftCorrection
+                if (noteMapping.NewPitchShiftInSemitones == null || !Global.AlterPitchBends) // new pitch shift is exclusive from PitchShiftCorrection
                 {
                     var psSubString = returns.Substring(psi + 1, 2);
                     var hexPSValue = Convert.ToInt32(psSubString, 16);
                     var hexPSDelta = 128 - hexPSValue;
-                    var newPSDelta = (int)Math.Round(hexPSDelta * noteMapping.PitchShiftCorrection);
+                    int newPSDelta;
+                    if (Global.CorrectPitchBends)
+                        newPSDelta = (int)Math.Round(hexPSDelta * noteMapping.PitchShiftCorrection);
+                    else
+                        newPSDelta = hexPSDelta;
+                    if (Global.ReversePitchBends)
+                        newPSDelta *= -1;
                     var newPSValue = 128 - newPSDelta;
                     while (newPSValue < 0)
                         newPSValue += 256;
@@ -238,12 +258,14 @@ namespace ftinvert
             }
 
         }
-        public NoteMapper(TextReader settings)
+        public NoteMapper(TextReader settings, int key)
         {
             var notes = Notes.Instance.NotesNameIndex;
-            foreach (var fromNote in notes.Dict1To2.Keys)
+            foreach (var fromNote in notes.Dict2To1.Keys)
             {
-                Console.WriteLine($"{fromNote} Mapping\n#########");
+                var fromNoteValue = (fromNote + key) %12;
+                var fromNoteName = notes[fromNoteValue];
+                Console.WriteLine($"{notes[fromNote]} Mapping\n#########");
                 Console.WriteLine($"Enter octave modifier (int):");
                 var newOctaveModifier = Int32.Parse(settings.ReadLine());
                 Console.WriteLine($"Enter new note (0 - 11):");
@@ -253,11 +275,11 @@ namespace ftinvert
 
                 var noteMapping = new NoteMapping();
                 
-                noteMapping.FromNote = fromNote;
+                noteMapping.FromNote = fromNoteName;
                 
-                var toNoteName = notes[toNote];
+                var toNoteName = notes[(toNote + key) % 12];
                 noteMapping.NewPitchShiftInSemitones = newPitchShiftInSemitones;
-                noteMapping.PitchShiftCorrection = CalculatePitchShiftCorrection(newOctaveModifier * 12 + (toNote - notes[fromNote]));
+                noteMapping.PitchShiftCorrection = CalculatePitchShiftCorrection(newOctaveModifier * 12 + ((toNote + key) % 12 - fromNoteValue));
                 noteMapping.ToNote = toNoteName;
                 noteMapping.OctaveModifier = newOctaveModifier;
                 NoteMappings.Add(noteMapping);
