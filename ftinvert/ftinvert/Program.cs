@@ -140,13 +140,15 @@ namespace ftinvert
                             Global.lastFromNoteInColumn[column] = Notes.Instance.NotesNameIndex[noteMapping.FromNote];
                             Global.lastOctaveInColumn[column] = parsedOctave;
                             var unmodifiedOctave = parsedOctave;
-
+                            var notesDifference = Notes.Instance.NotesNameIndex[noteMapping.FromNote] - Notes.Instance.NotesNameIndex[noteMapping.ToNote];
                             var modifiedOctave = (unmodifiedOctave + noteMapping.OctaveModifier);
 
-                            if (modifiedOctave < 10 && modifiedOctave >= 0)
-                                finalOctave = modifiedOctave + "";
-                            else
-                                finalOctave = unmodifiedOctave + "";
+                            while (modifiedOctave >= 8)
+                                modifiedOctave--;
+                            while (modifiedOctave <= 0)
+                                modifiedOctave++;
+                            
+                            finalOctave = modifiedOctave + "";
                             newSubstr = noteMapping.ToNote + finalOctave;
                             if (noteMapping.NewPitchShiftInSemitones != null && Global.AlterPitchBends)
                             { // hack alert - replace first fx column with a pitch modifier if we are doing "custom map" for microtonal stuff
@@ -236,10 +238,12 @@ namespace ftinvert
                 if (toNote > 11)
                 {
                     toNote %= 12;
+                    newOctaveModifier += 1;
                 }
                 if (toNote < 0)
                 {
                     toNote += 12;
+                    newOctaveModifier -= 1;
                 }
                 var toNoteName = notes[toNote];
 
