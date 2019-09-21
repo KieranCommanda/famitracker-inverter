@@ -10,16 +10,25 @@ namespace ftinvert
 {
     public static class Global
     {
-        public static int baseOctaveModifier;
-        internal static int triangleOctaveModifier;
-        public static List<int> notesToRaise;
-        public static List<int> notesToLower;
+        public static int baseOctaveModifier = 0;
+        internal static int triangleOctaveModifier = 0;
+        public static List<int> notesToRaise = new List<int> {-1};
+        public static List<int> notesToLower = new List<int> {-1};
+        public static List<int> firstOctaves = new List<int> { -1 };
+        public static List<int> octaveCorrectionStrategy = new List<int> { -1 };
         public static Dictionary<int, int> lastFromNoteInColumn = new Dictionary<int, int>();
         public static Dictionary<int, int> lastOctaveInColumn = new Dictionary<int, int>();
+        public static Dictionary<int, int> lastOctaveInColumnPostInversion = new Dictionary<int, int>();
 
         public static bool AlterPitchBends { get; internal set; }
         public static bool ReversePitchBends { get; internal set; }
         public static bool CorrectPitchBends { get; internal set; }
+        public static bool PreserveContour{ get; internal set; }
+
+        public static int BeatLength { get; internal set; }
+        public static int SkipRows { get; internal set; }
+        public static int BeatsPerBar { get; internal set; }
+        public static List<int> OutputBeatList = new List<int> { -1 };
     }
     class Program
     {
@@ -28,33 +37,48 @@ namespace ftinvert
         {
             Console.WriteLine("Enter the filename without .txt:");
             var filename = Console.ReadLine();
-            Console.WriteLine("Enter 1 for negative harmony, 2 for custom mapping:");
+            Console.WriteLine("Enter 1 for negative harmony, 2 for custom mapping, 3 for beat altering:");
             var mode = Console.ReadLine();
             NoteMapper noteMapper;
             NoteMapper triangleNoteMapper;
             Global.ReversePitchBends = mode == "1"; //we will revere the pitc ben if we are doing negative harmony only
-            Console.WriteLine("Correct pitch bends(y/n)?:");
+            if (mode != "3")
+            {
+                Console.WriteLine("Correct pitch bends(y/n)?:");
 
-            Global.CorrectPitchBends = Console.ReadLine().ToLower().Trim() == "y";
-            Console.WriteLine("Alter pitch bends(y/n)?:");
+                Global.CorrectPitchBends = Console.ReadLine().ToLower().Trim() == "y";
+                Console.WriteLine("Alter pitch bends(y/n)?:");
 
-            Global.AlterPitchBends = Console.ReadLine().ToLower().Trim() == "y";
+                Global.AlterPitchBends = Console.ReadLine().ToLower().Trim() == "y";
+            }
             if (mode == "1")
             {
                 Console.WriteLine("Enter the key (e.g. C# for C sharp/D flat, C- for just C) major/minor doesn't matter:");
                 var key = Console.ReadLine();
-                Console.WriteLine("Enter base octave modifier (integer):");
-                Global.baseOctaveModifier = Int32.Parse(Console.ReadLine());
-                Console.WriteLine("Enter triangle octave modifier (integer):");
-                Global.triangleOctaveModifier = Int32.Parse(Console.ReadLine());
-                Console.WriteLine("Enter a comma-separated list of notes to raise 1 octave (0-11) or -1 if none:");
-                Global.notesToRaise = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
-                Console.WriteLine("Enter a comma-separated list of notes to lower 1 octave (0-11) or -1 if none:");
-                Global.notesToLower = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
+                Console.WriteLine("Preserve contour?:");
+                Global.PreserveContour = Console.ReadLine().ToLower().Trim() == "y";
+                if (!Global.PreserveContour)
+                {
+                    Console.WriteLine("Enter base octave modifier (integer):");
+                    Global.baseOctaveModifier = Int32.Parse(Console.ReadLine());
+                    Console.WriteLine("Enter triangle octave modifier (integer):");
+                    Global.triangleOctaveModifier = Int32.Parse(Console.ReadLine());
+                    Console.WriteLine("Enter a comma-separated list of notes to raise 1 octave (0-11) or -1 if none:");
+                    Global.notesToRaise = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
+                    Console.WriteLine("Enter a comma-separated list of notes to lower 1 octave (0-11) or -1 if none:");
+                    Global.notesToLower = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
+                }
+                else
+                {
+                    Console.WriteLine("Enter a comma-separated list of first octaves for each column:");
+                    Global.firstOctaves = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
+                    Console.WriteLine("Enter a octave correction strategy for each column (1 = average, 2 = fast, 3= slow):");
+                    Global.octaveCorrectionStrategy = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
+                }
                 noteMapper = new NoteMapper(key, Global.baseOctaveModifier);
                 triangleNoteMapper = new NoteMapper(key, Global.triangleOctaveModifier);
             }
-            else
+            else if (mode == "2")
             {
 
                 Console.WriteLine("Enter the settings file name without .txt, or press enter for console:");
@@ -71,7 +95,7 @@ namespace ftinvert
                     {
                         var settingsFile = new FileStream(newSettingsName + ".txt", FileMode.Create);
                         var settingsWrite = new StreamWriter(settingsFile);
-                        
+
                         var newSettingsReader = new ReaderIntoWriter(Console.In, settingsWrite);
                         noteMapper = new NoteMapper(newSettingsReader, key);
                         settingsWrite.Close();
@@ -81,11 +105,28 @@ namespace ftinvert
                 {
                     var settingsFile = new FileStream(settingsName + ".txt", FileMode.Open);
                     var settingsRead = new StreamReader(settingsFile);
-                    
+
                     noteMapper = new NoteMapper(settingsRead, key);
                     settingsRead.Close();
                 }
                 triangleNoteMapper = noteMapper;
+            }
+            else
+            {
+                Console.WriteLine("Enter the beat length in rows:");
+                int beatLength = Int32.Parse(Console.ReadLine());
+                Global.BeatLength = beatLength;
+                noteMapper = null;
+                triangleNoteMapper = null;
+                Console.WriteLine("Enter the number of rows to skip:");
+                int skipRows = Int32.Parse(Console.ReadLine());
+                Global.SkipRows = skipRows;
+                Console.WriteLine("Enter the original number of beats per bar:");
+                int beatsPerBar = Int32.Parse(Console.ReadLine());
+                Global.BeatsPerBar = beatsPerBar;
+                Console.WriteLine("Enter a comma-separated list of beats from the original bar, in order, to output each bar:");
+                Global.OutputBeatList = Console.ReadLine().Split(',').ToList().Select(s => Int32.Parse(s.Trim())).ToList();
+
             }
             
             var fileRead = new FileStream(filename +".txt", FileMode.Open);
@@ -93,7 +134,30 @@ namespace ftinvert
             var streamRead = new StreamReader(fileRead);
             var streamWrite = new StreamWriter(fileWrite);
             var currentLine = "";
-            while((currentLine = streamRead.ReadLine()) != null )
+            var rowNumber = 0;
+            var beatNumber = 0;
+            int writeBufferPosition = 0;
+            int bufferReadPosition = 0;
+            var readbuffer = new List<string[]>();
+            var writebuffer = new List<string[]>();
+            //for mode 3, read everything into the buffer 4 times first
+            for (int k = 0; k < 4; k++)
+            {
+                while ((currentLine = streamRead.ReadLine()) != null)
+                {
+                    if (!currentLine.StartsWith("ROW"))
+                    {
+                        continue;
+                    }
+                    var currentLineSplit = currentLine.Split(':');
+                    readbuffer.Add(currentLineSplit);
+                }
+                streamRead.Close();
+                fileRead = new FileStream(filename + ".txt", FileMode.Open);
+                streamRead = new StreamReader(fileRead);
+            }
+            var beatsInBar = new List<List<string[]>>();
+            while ((currentLine = streamRead.ReadLine()) != null )
             {
                 if (!currentLine.StartsWith("ROW"))
                 {
@@ -103,14 +167,80 @@ namespace ftinvert
                 
                 var newLine = "";
                 var currentLineSplit = currentLine.Split(':');
-                for (int i = 0; i < currentLineSplit.Length; i++)
+                if (mode != "3")
                 {
-                    if (i != 3)
-                        newLine += currentLineSplit[i].InvertNotes(noteMapper,i) +":";
-                    else
-                        newLine += currentLineSplit[i].InvertNotes(triangleNoteMapper,i) + ":";
+                    for (int i = 0; i < currentLineSplit.Length; i++)
+                    {
+                        if (i != 3)
+                            newLine += currentLineSplit[i].InvertNotes(noteMapper, i) + ":";
+                        else
+                            newLine += currentLineSplit[i].InvertNotes(triangleNoteMapper, i) + ":";
+                    }
+                    newLine = newLine.Substring(0, newLine.Length - 1);
                 }
-                newLine = newLine.Substring(0,newLine.Length - 1);
+                else
+                {
+                    var changedBeat = (rowNumber % Global.BeatLength == 0);
+                    if (changedBeat)
+                    {
+                        beatNumber++;
+                        if (beatNumber > Global.OutputBeatList.Count)
+                        {
+                            beatNumber -= Global.OutputBeatList.Count;
+                        }
+                    }
+                        
+                    rowNumber++;
+                    if (rowNumber < Global.SkipRows)
+                    {
+                        continue;
+                    }
+                    else if (rowNumber == Global.SkipRows)
+                    {
+                        Global.SkipRows = -1;
+                        rowNumber = 0;
+                        beatNumber = 1;
+                        changedBeat = true;
+                    }
+
+                    if (changedBeat && beatNumber == 1) //startin a new bar, reload the beat buffer
+                    {
+                        beatsInBar = new List<List<string[]>>();
+
+                        for (int i = 0; i < Global.BeatsPerBar; i++)
+                        {
+                            var beatRows = new List<string[]>();
+                            for (int j = 0; j < Global.BeatLength; j++)
+                            {
+                                beatRows.Add(readbuffer.ElementAt(bufferReadPosition));
+                                bufferReadPosition++;
+                            }
+                            beatsInBar.Add(beatRows);
+                        }
+                        foreach (var outputBeatNumber in Global.OutputBeatList)
+                        {
+                            var outputBeat = beatsInBar.ElementAt(outputBeatNumber);
+
+                            foreach (var outputBeatRow in outputBeat)
+                            {
+                                writebuffer.Add(outputBeatRow);
+                            }
+                        }
+                    }
+
+                    readbuffer.Add(currentLineSplit);
+
+                    var writebufferline = writebuffer.ElementAt(writeBufferPosition);
+                    writeBufferPosition++;
+
+                    var lineToWrite = writebufferline;
+                    lineToWrite[0] = currentLineSplit[0];
+
+                    var stringLineToWrite = lineToWrite.Aggregate((s,ss)=>s + ":" + ss);
+
+                    newLine = stringLineToWrite;
+
+                }
                 streamWrite.WriteLine(newLine);
             }
             streamRead.Close();
@@ -137,11 +267,37 @@ namespace ftinvert
                         if (Int32.TryParse(curSubstr.Substring(2, 1), out parsedOctave))
                         {
                             //log this note as the last one found in this column
-                            Global.lastFromNoteInColumn[column] = Notes.Instance.NotesNameIndex[noteMapping.FromNote];
-                            Global.lastOctaveInColumn[column] = parsedOctave;
+
                             var unmodifiedOctave = parsedOctave;
                             var notesDifference = Notes.Instance.NotesNameIndex[noteMapping.FromNote] - Notes.Instance.NotesNameIndex[noteMapping.ToNote];
-                            var modifiedOctave = (unmodifiedOctave + noteMapping.OctaveModifier);
+                            int modifiedOctave = unmodifiedOctave;
+                            var isFirstNoteInColumn = !Global.lastFromNoteInColumn.ContainsKey(column);
+                            if (Global.PreserveContour)
+                            {
+                                if (isFirstNoteInColumn)
+                                {
+                                    modifiedOctave = Global.firstOctaves.ElementAt(column - 1);
+                                    Global.lastFromNoteInColumn[column] = Notes.Instance.NotesNameIndex[noteMapping.FromNote];
+                                    Global.lastOctaveInColumn[column] = parsedOctave;
+                                    Global.lastOctaveInColumnPostInversion[column] = modifiedOctave;
+                                }
+                                if (!isFirstNoteInColumn)
+                                {
+                                    modifiedOctave = FTInvertHelper.OctaveForPreservedReversedContour(
+                                        Global.lastOctaveInColumn[column],
+                                        Global.lastFromNoteInColumn[column],
+                                        parsedOctave,
+                                        noteMapping.FromNote,
+                                        Global.lastOctaveInColumnPostInversion[column],
+                                        noteMapper,
+                                        Global.octaveCorrectionStrategy.ElementAt(column - 1)
+                                        );
+                                }
+                            }
+                            else
+                            {
+                                modifiedOctave = (unmodifiedOctave + noteMapping.OctaveModifier);
+                            }
 
                             while (modifiedOctave >= 8)
                                 modifiedOctave--;
@@ -150,11 +306,14 @@ namespace ftinvert
                             
                             finalOctave = modifiedOctave + "";
                             newSubstr = noteMapping.ToNote + finalOctave;
-                            if (noteMapping.NewPitchShiftInSemitones != null && Global.AlterPitchBends)
+                            if (Global.AlterPitchBends)
                             { // hack alert - replace first fx column with a pitch modifier if we are doing "custom map" for microtonal stuff
                                 returns = returns.Remove(i + 9, 3);
                                 returns = returns.Insert(i + 9, "P80");
                             }
+                            Global.lastFromNoteInColumn[column] = Notes.Instance.NotesNameIndex[noteMapping.FromNote];
+                            Global.lastOctaveInColumn[column] = parsedOctave;
+                            Global.lastOctaveInColumnPostInversion[column] = modifiedOctave;
                         }
                     }
                 }
@@ -168,7 +327,7 @@ namespace ftinvert
             {
                 var lastNote = Notes.Instance.NotesNameIndex[Global.lastFromNoteInColumn[column]];
                 var noteMapping = noteMapper.NoteMappings.Single(nm => nm.FromNote == lastNote);
-                if (noteMapping.NewPitchShiftInSemitones == null || !Global.AlterPitchBends) // new pitch shift is exclusive from PitchShiftCorrection
+                if (!Global.AlterPitchBends) // new pitch shift is exclusive from PitchShiftCorrection
                 {
                     var psSubString = returns.Substring(psi + 1, 2);
                     var hexPSValue = Convert.ToInt32(psSubString, 16);
@@ -200,6 +359,54 @@ namespace ftinvert
                 }
             }
             return returns;
+        }
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="LastOctave">Last octave, pre-inversion</param>
+        /// <param name="LastNote">Last note, pre-inversion</param>
+        /// <param name="CurrentOctave">Current octave, pre-inversion</param>
+        /// <param name="CurrentNote">Current note, pre-inversion</param>
+        /// <param name="LastOctavePostInversion">Last octave, post-inversion</param>
+        /// <param name="noteMapper">Note mapper for the inversion</param>
+        /// <returns>The octave of the current inverted note, to preserve reversed contour after inversion</returns>
+        public static int OctaveForPreservedReversedContour(int LastOctave, int LastNote, int CurrentOctave, string CurrentNote, int LastOctavePostInversion, NoteMapper noteMapper, int octaveCorrectionStrategy)
+        {
+ 
+            int lastNoteTotal = LastOctave * 12 + LastNote;
+            int currentNoteTotal = CurrentOctave * 12 + Notes.Instance.NotesNameIndex[CurrentNote];
+            int preInversionContour = - lastNoteTotal + currentNoteTotal;
+            int currentOctavePostInversion =  CurrentOctave;
+            if (octaveCorrectionStrategy == 1) // average
+                currentOctavePostInversion = (int)Math.Floor((decimal)((CurrentOctave + LastOctavePostInversion) / 2) );
+            if (octaveCorrectionStrategy == 2) // fast
+                currentOctavePostInversion = CurrentOctave;
+            if (octaveCorrectionStrategy == 3) // slow
+                currentOctavePostInversion = LastOctavePostInversion;
+            int postInversionContour = int.MaxValue;
+            do
+            {
+
+                if (postInversionContour != int.MaxValue && !(postInversionContour == 0 && preInversionContour == 0)) // this is a sentinel value, first time we just calculate the post inversion contour
+                {
+                    if (postInversionContour >= 0 && preInversionContour >= 0) // pre inversion and post inversion both positive, so post inversion needs to be negative
+                    {
+                        currentOctavePostInversion -= 1;
+                    }
+                    if (postInversionContour <= 0 && preInversionContour <= 0) // pre inversion and post inversion both negative, so post inversion needs to be positive
+                    {
+                        currentOctavePostInversion += 1;
+                    }
+
+                }
+                int lastNoteTotalPostInversion = LastOctavePostInversion * 12 + Notes.Instance.NotesNameIndex[noteMapper.NoteMappings.Single(nm => nm.FromNote == Notes.Instance.NotesNameIndex[LastNote]).ToNote];
+                int currentNoteTotalPostInversion = currentOctavePostInversion * 12 + Notes.Instance.NotesNameIndex[noteMapper.NoteMappings.Single(nm=>nm.FromNote == CurrentNote).ToNote];
+                postInversionContour = - lastNoteTotalPostInversion + currentNoteTotalPostInversion;
+            }
+            while (postInversionContour < 0 != preInversionContour > 0);
+
+            return currentOctavePostInversion;
+
         }
 
     }
