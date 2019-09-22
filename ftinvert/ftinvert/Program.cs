@@ -37,6 +37,8 @@ namespace ftinvert
         {
             Console.WriteLine("Enter the filename without .txt:");
             var filename = Console.ReadLine();
+            var noteOccurence = FTInvertHelper.AnalyzeNoteOccurence(filename);
+            FTInvertHelper.PrintNoteOccurence(noteOccurence);
             Console.WriteLine("Enter 1 for negative harmony, 2 for custom mapping, 3 for beat altering:");
             var mode = Console.ReadLine();
             NoteMapper noteMapper;
@@ -129,34 +131,22 @@ namespace ftinvert
 
             }
             
-            var fileRead = new FileStream(filename +".txt", FileMode.Open);
+            
             var fileWrite = new FileStream( filename + " inverted.txt", FileMode.Create);
-            var streamRead = new StreamReader(fileRead);
             var streamWrite = new StreamWriter(fileWrite);
             var currentLine = "";
             var rowNumber = 0;
             var beatNumber = 0;
             int writeBufferPosition = 0;
             int bufferReadPosition = 0;
-            var readbuffer = new List<string[]>();
+            
             var writebuffer = new List<string[]>();
-            //for mode 3, read everything into the buffer 4 times first
-            for (int k = 0; k < 4; k++)
-            {
-                while ((currentLine = streamRead.ReadLine()) != null)
-                {
-                    if (!currentLine.StartsWith("ROW"))
-                    {
-                        continue;
-                    }
-                    var currentLineSplit = currentLine.Split(':');
-                    readbuffer.Add(currentLineSplit);
-                }
-                streamRead.Close();
-                fileRead = new FileStream(filename + ".txt", FileMode.Open);
-                streamRead = new StreamReader(fileRead);
-            }
+            var readbuffer = FTInvertHelper.ReadFamitrackerTextFile(filename,4);
             var beatsInBar = new List<List<string[]>>();
+
+            var fileRead = new FileStream(filename +".txt", FileMode.Open);
+            var streamRead = new StreamReader(fileRead);
+
             while ((currentLine = streamRead.ReadLine()) != null )
             {
                 if (!currentLine.StartsWith("ROW"))
@@ -249,6 +239,82 @@ namespace ftinvert
     }
     public static class FTInvertHelper
     {
+        public static string GetNoteStringFromCell(string cell)
+        {
+            for (int i = 0; i < cell.Length -2; i++)
+            {
+                var noteWithOctave = cell.Substring(i, 3);
+                var noteString = noteWithOctave.Substring(0,2);
+                var octaveString = noteWithOctave.Substring(2, 1);
+                int parsedOctave;
+                if (
+                        Notes.Instance.NotesNameIndex.Dict1To2.Keys.Contains(noteString) 
+                        && Int32.TryParse(octaveString, out parsedOctave)
+                   )
+                {
+                    return noteString;
+                }
+            }
+            return null;
+        }
+
+        
+        public static List<string[]> ReadFamitrackerTextFile(string filename, int repeatlength = 1)
+        {
+
+            var fileRead = new FileStream(filename +".txt", FileMode.Open);
+            var readbuffer = new List<string[]>();
+            var streamRead = new StreamReader(fileRead);
+            for (int k = 0; k < 4; k++)
+            {
+                var currentLine = "";
+                while ((currentLine = streamRead.ReadLine()) != null)
+                {
+                    if (!currentLine.StartsWith("ROW"))
+                    {
+                        continue;
+                    }
+                    var currentLineSplit = currentLine.Split(':');
+                    readbuffer.Add(currentLineSplit);
+                }
+                streamRead.Close();
+                fileRead = new FileStream(filename + ".txt", FileMode.Open);
+                streamRead = new StreamReader(fileRead);
+            }
+            streamRead.Close();
+            fileRead.Close();
+            return readbuffer;
+        }
+
+        public static Dictionary<string, int> AnalyzeNoteOccurence(string filename)
+        {
+            var noteOccurences = Notes.Instance.NotesNameIndex.Dict1To2.ToDictionary(note => note.Key, note => 0);
+            var readBuffer = ReadFamitrackerTextFile(filename);
+            foreach (var currentLineSplit in readBuffer)
+            {
+                if (!currentLineSplit[0].StartsWith("ROW"))
+                {
+                    continue;
+                }
+              
+                for (int i = 0; i < currentLineSplit.Length; i++)
+                {
+                    var noteString = GetNoteStringFromCell(currentLineSplit[i]);
+                    if (noteString != null)
+                    {
+                        noteOccurences[noteString]++;
+                    }
+                }
+            }
+            return noteOccurences;
+        }
+        public static void PrintNoteOccurence(Dictionary<string, int> noteOccurence)
+        {
+            foreach (var no in noteOccurence.OrderByDescending(no=>no.Value))
+            {
+                Console.WriteLine($"{no.Key} : {no.Value} occurences");
+            }
+        }
         public static string InvertNotes(this string cell, NoteMapper noteMapper, int column)
         {
             var returns = cell;
@@ -256,9 +322,10 @@ namespace ftinvert
             {
                 var curSubstr = returns.Substring(i, 3);
                 var newSubstr = curSubstr;
+                var noteString = curSubstr.Substring(0,2);
                 foreach (var noteMapping in noteMapper.NoteMappings)
                 {
-                    if (curSubstr.Substring(0, 2) == noteMapping.FromNote)
+                    if (noteString == noteMapping.FromNote)
                     {
                         
                         int parsedOctave;
